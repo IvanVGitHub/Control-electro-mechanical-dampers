@@ -1,0 +1,280 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <LCD_1602_RUS.h> // устанавливаем библиотеку LCD_1602_RUS-master (ќ–»√»ЌјЋ)
+#include <EEPROM.h> // библоитека для хранения и записи переменных в энерго независимой памяти
+
+LCD_1602_RUS lcd(0x3F, 16, 2); // адрес 0x27 или 0x3F, дисплей 16х2
+
+int const pulPin = 2;
+int const dirPin = 3;
+int const enblPin = 4;
+int const visota_1 = 7; // управляющий сигнал с "таймера"
+int const visota_2 = 6; // управляющий сигнал с "таймера"
+int const visota_3 = 5; // управляющий сигнал с "таймера"
+unsigned long time; // таймер на отключение питания двигателя при бездействии
+int timeWait = 5000; // время, через которое таймер отключит двигатель
+int cach_visota = EEPROM.read(0); // последнее положение "высоты", считываем его из постоянной памяти
+int vint_klapana = 3; // количество оборотов винта клапана на амортизаторе
+int shagi_servo = 400; // количество шагов серводвигателя для полного оборота
+int reduktor = 3.33; // соотношение редуктора винт_клапана/серводвигатель
+
+int kray = vint_klapana * shagi_servo * reduktor; // вращение из крайнего положения в крайнее
+int seredina = kray / 2; // вращение на половину от максимального
+
+void setup()
+{
+	Serial.begin(9600); // Подготовка Serial Monitor для вывода информации
+	lcd.init(); // инициализация LCD
+	lcd.backlight(); // включаем подсветку
+	lcd.clear(); // очистка дисплея
+
+	pinMode(pulPin, OUTPUT);
+	pinMode(dirPin, OUTPUT);
+	pinMode(enblPin, OUTPUT);
+
+	digitalWrite(pulPin, LOW);
+	digitalWrite(dirPin, LOW);
+	digitalWrite(enblPin, HIGH);
+
+	pinMode(visota_1, INPUT);
+	digitalWrite(visota_1, HIGH);
+
+	pinMode(visota_2, INPUT);
+	digitalWrite(visota_2, HIGH);
+
+	pinMode(visota_3, INPUT);
+	digitalWrite(visota_3, HIGH);
+
+	lcd.clear();
+	lcd.setCursor(0, 0); // переносим курсор в левый угол первой строки
+	lcd.print("  Приветствую!");
+	delay(2000);
+	lcd.clear();
+
+	if (cach_visota != 1 && cach_visota != 2 && cach_visota != 3)
+	{
+		cach_visota = 100;
+		// EEPROM.update(0, cach_visota);  // запись числа в ячейку 0, подразумевается запись ќЎ»Ѕ »
+		// 100, которая должна подразумевать необходимость калибровки положения
+		lcd.clear();
+		lcd.setCursor(0, 0); // переносим курсор в левый угол первой строки
+		lcd.print("Нужна калибровка");
+		lcd.setCursor(0, 1); // переносим курсор в левый угол второй строки
+		lcd.print("!!!!!!!!!!!!!!!!");
+		delay(2000);
+
+		// ѕ≈–≈ѕ»—ј“№,  ќ√ƒј Ѕ”ƒ”“ ”—“јЌќ¬Ћ≈Ќџ  ќЌ÷≈¬» » ƒЋя  јЋ»Ѕ–ќ¬ » », —ќќ“¬≈“—“¬≈ЌЌќ, ƒќѕ»—ј“№
+		//  ќƒ ƒЋя  јЋ»Ѕ–ќ¬ »
+		lcd.clear();
+		lcd.setCursor(0, 0); // переносим курсор в левый угол первой строки
+		lcd.print("Калибровка пошла");
+
+		digitalWrite(enblPin, LOW);
+		digitalWrite(dirPin, HIGH);
+		for (int x = 0; x < kray; x++)
+		{
+			digitalWrite(pulPin, HIGH);
+			digitalWrite(pulPin, LOW);
+			delay(10);
+		}
+		digitalWrite(dirPin, LOW);
+		for (int x = 0; x < kray; x++)
+		{
+			digitalWrite(pulPin, HIGH);
+			digitalWrite(pulPin, LOW);
+			delay(10);
+		}
+		digitalWrite(dirPin, HIGH);
+		for (int x = 0; x < seredina; x++)
+		{
+			digitalWrite(pulPin, HIGH);
+			digitalWrite(pulPin, LOW);
+			delay(10);
+		}
+		time = millis();
+		//	for (int x = 0; x < 16; x++)
+		//	{
+		//	  lcd.setCursor(x,1);  // переносим курсор в левый угол второй строки
+		//	  lcd.print("O");
+		//	  delay(400);
+		//	}
+
+		cach_visota = 2;
+		EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+		// ѕ≈–≈ѕ»—ј“№,  ќ√ƒј Ѕ”ƒ”“ ”—“јЌќ¬Ћ≈Ќџ  ќЌ÷≈¬» » ƒЋя  јЋ»Ѕ–ќ¬ » », —ќќ“¬≈“—“¬≈ЌЌќ, ƒќѕ»—ј“№
+		//  ќƒ ƒЋя  јЋ»Ѕ–ќ¬ »
+		lcd.clear();
+	}
+}
+
+void loop()
+{
+	lcd.setCursor(0, 0); // переносим курсор в левый угол первой строки
+	lcd.print("Жесткость:     ");
+	lcd.setCursor(0, 1); // переносим курсор в левый угол второй строки
+
+	switch (cach_visota)
+	{
+		case 1:
+			lcd.print("Комфорт");
+			break;
+		case 2:
+			lcd.print("Medium ");
+			break;
+		case 3:
+			lcd.print("Спорт  ");
+			break;
+	}
+
+	if (digitalRead(visota_1) == LOW)
+	{
+		lcd.setCursor(0, 1); // переносим курсор в левый угол второй строки
+		lcd.print("Комфорт");
+
+		if (cach_visota == 2)
+		{
+			cach_visota = 1;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, LOW);
+			delay(10);
+			for (int x = 0; x < seredina; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(seredina);
+		}
+		if (cach_visota == 3)
+		{
+			cach_visota = 1;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, LOW);
+			delay(10);
+			for (int x = 0; x < kray; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(kray);
+		}
+	}
+
+	if (digitalRead(visota_2) == LOW)
+	{
+		lcd.setCursor(0, 0); // костыль из-за странного бага
+		lcd.print("Жесткость:     "); // костыль из-за странного бага
+
+		lcd.setCursor(0, 1); // переносим курсор в левый угол второй строки
+		lcd.print("Medium ");
+
+		if (cach_visota == 1)
+		{
+			cach_visota = 2;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, HIGH);
+			delay(10);
+			for (int x = 0; x < seredina; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(seredina);
+		}
+		if (cach_visota == 3)
+		{
+			cach_visota = 2;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, LOW);
+			delay(10);
+			for (int x = 0; x < seredina; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(seredina);
+		}
+	}
+
+	if (digitalRead(visota_3) == LOW)
+	{
+		lcd.setCursor(0, 1); // переносим курсор в левый угол второй строки
+		lcd.print("Спорт  ");
+
+		if (cach_visota == 1)
+		{
+			cach_visota = 3;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, HIGH);
+			delay(10);
+			for (int x = 0; x < kray; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(kray);
+		}
+		if (cach_visota == 2)
+		{
+			cach_visota = 3;
+			EEPROM.update(0, cach_visota); // запись числа в ячейку 0
+
+			digitalWrite(enblPin, LOW);
+			delay(50);  // задержка необходима драйверу для корректной работы
+			digitalWrite(dirPin, HIGH);
+			delay(10);
+			for (int x = 0; x < seredina; x++)
+			{
+				delay(1);
+				digitalWrite(pulPin, HIGH);
+				delay(1);
+				digitalWrite(pulPin, LOW);
+			}
+			time = millis();
+			//serialPort(seredina);
+		}
+	}
+
+	if (millis() - time > timeWait) // через timeWait двигатель выключится, если работал
+	{
+		digitalWrite(enblPin, HIGH); // выключаем двигатель
+		time = millis(); // выравниваем время работы программы (millis()) с переменной time, чтобы
+						 // условие не срабатывало каждый такт
+	}
+}
+
+void serialPort(int value)
+{
+	Serial.print("Shagov: ");
+	Serial.println(value);
+	Serial.println();
+}
